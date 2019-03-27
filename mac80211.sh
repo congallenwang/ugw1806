@@ -817,6 +817,36 @@ drv_mac80211_setup() {
 		return 1
 	}
 
+    exec 1>/dev/console
+    
+    echo "generate hostapd config for $interface"
+    /opt/lantiq/wave/scripts/pantek_wifi.lua reconfig $interface
+
+    echo "start hostapd for $interface"
+    /tmp/hostapd_$interface -B /var/run/hostapd-$interface.conf
+
+    exec 1>/dev/null
+
+	wireless_set_up
+}
+
+drv_mac80211_setup1() {
+	json_select config
+	json_get_vars \
+		phy macaddr path \
+		country chanbw distance \
+		txpower antenna_gain \
+		rxantenna txantenna \
+		frag rts beacon_int:100 htmode
+	json_get_values basic_rate_list basic_rate
+	json_select ..
+
+	find_phy || {
+		echo "Could not find PHY for device '$1'"
+		wireless_set_retry 0
+		return 1
+	}
+
 	wireless_set_data phy="$phy"
 	mac80211_interface_cleanup "$phy"
 

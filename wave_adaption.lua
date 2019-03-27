@@ -188,24 +188,71 @@ function wifi_reload(dev, dev_index)
 
 	-- 2. start hostapd
 --	up_script:write_command_script('\n### Start hostapd ###')
-	up_script:write_command_script(string.format("/tmp/hostapd_%s -B %s", device_name, hostapd_conf))
+--	up_script:write_command_script(string.format("/tmp/hostapd_%s %s -e %s -B", device_name, hostapd_conf, hostapd_log))
 --	os.execute(cmd)
-	--cls_iwpriv:Start_hostapd(device_name, hostapd_conf)
+	cls_iwpriv:Start_hostapd(device_name, hostapd_conf)
 
 	-- 3. setting iwpriv configuration after hostapd
 	cls_iwpriv:iwpriv_after_hostapd(device_name, opwrt_device_dir)
 	-- 4. setting vap iwpriv configuration after hostapd
 	--os.execute('sleep 2')
 	up_script:write_command_script('sleep 2')
-    --[[
 	for net_index, net in ipairs(dev:get_wifinets()) do
 		local vap_name = get_vap_name(device_name, net_index)
 		local opwrt_iface_dir = prase_wireless_uci(net:name())
 		cls_iwpriv:vap_command_after_hostapd(opwrt_iface_dir, net:name(), vap_name)
 	end
-    ]]--
 	up_script:close()
 	up_script:execute_script()
+
+end
+
+function hostapd_reconfig(dev, dev_index) 
+	local ret
+
+	local device_name = dev:name()
+	--disable current wifi iface
+	disable_iface(dev)
+
+	local opwrt_device_dir = prase_wireless_uci(device_name)
+
+	--check wifi device switch
+	if(opwrt_device_dir['disabled'] == '1') then
+		print(opwrt_device_dir['disabled'])
+		return 0 -- wifi switch disable 
+	end
+
+	local hostapd_conf = string.format('%s/hostapd-%s.conf', '/var/run', device_name) 
+	--create hostapd configuration file
+	local conf_file = io.open(hostapd_conf, 'w+')
+
+	--update config detail to hostapd_wlanX.conf
+	physical_radio_setting(conf_file, device_name, opwrt_device_dir)
+	wmm_setting(conf_file, opwrt_device_dir)
+	radio_setting(conf_file, device_name, opwrt_device_dir)
+	for net_index, net in ipairs(dev:get_wifinets()) do
+		local op_name = net:name()
+		local vap_name = get_vap_name(device_name, net_index)
+		local opwrt_iface_dir = prase_wireless_uci(op_name)
+
+		while true do  --replace continue
+			print (opwrt_iface_dir)
+			--check vap switch
+--			if(opwrt_iface_dir['disabled'] == '1') then
+			if(get_safe_value('disabled', opwrt_iface_dir['disabled'], '0') == '1') then
+				print(string.format("iface:%s disabled\n", op_name))
+				break -- wifi switch disable 
+			end
+			--begin muilt ssid setting 
+			vap_parameters(conf_file, opwrt_iface_dir, vap_name, dev_index, net_index)
+			ap_parameters(conf_file, opwrt_device_dir, opwrt_iface_dir, op_name, vap_name)
+			mbo_parameters(conf_file, opwrt_device_dir)
+			rrm_parameters(conf_file, opwrt_device_dir)
+			security_setting(conf_file, opwrt_iface_dir)
+			wps_setting(conf_file, opwrt_iface_dir)
+			break
+		end
+	end
 
 end
 
