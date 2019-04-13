@@ -350,7 +350,19 @@ mac80211_hostapd_setup_base() {
 			vht_capab="$vht_capab[VHT-LINK-ADAPT-$vht_link_adapt_hw]"
 
 		[ -n "$vht_capab" ] && append base_cfg "vht_capab=$vht_capab" "$N"
-	fi
+
+        ##Cong    
+        append base_cfg "vendor_vht=0" "$N"
+        
+        vht_oper_chwidth=0
+        case "$htmode" in
+		    VHT80)
+                vht_oper_chwidth=1 
+            ;; 
+        esac
+        append base_cfg "vht_oper_chwidth=$vht_oper_chwidth" "$N"
+
+    fi
 
     ##Cong
     json_get_vars preamble
@@ -557,7 +569,8 @@ mac80211_prepare_vif() {
 		sta)
 			local wdsflag=
 			staidx="$(($staidx + 1))"
-			[ "$wds" -gt 0 ] && wdsflag="4addr on"
+		    echo "prepare sta vif" > /dev/console
+            [ "$wds" -gt 0 ] && wdsflag="4addr on"
 			mac80211_iw_interface_add "$phy" "$ifname" managed "$wdsflag" || return
 			[ "$powersave" -gt 0 ] && powersave="on" || powersave="off"
 			iw "$ifname" set power_save "$powersave"
@@ -575,20 +588,24 @@ mac80211_prepare_vif() {
 		# All interfaces must have unique mac addresses
 		# which can either be explicitly set in the device
 		# section, or automatically generated
-		ip link set dev "$ifname" address "$macaddr"
+	    echo "ip link set dev $ifname address $macaddr" > /dev/console 
+        ip link set dev "$ifname" address "$macaddr"
 	fi
 
 	json_select ..
 }
 
 mac80211_setup_supplicant() {
-	wpa_supplicant_prepare_interface "$ifname" nl80211 || return 1
+
+    echo "call setup supplicant" > /dev/console
+
+    wpa_supplicant_prepare_interface "$ifname" nl80211 || return 1
 	if [ "$mode" = "sta" ]; then
 		wpa_supplicant_add_network "$ifname"
 	else
 		wpa_supplicant_add_network "$ifname" "$freq" "$htmode" "$noscan"
 	fi
-	wpa_supplicant_run "$ifname" ${hostapd_ctrl:+-H $hostapd_ctrl}
+	#wpa_supplicant_run "$ifname" ${hostapd_ctrl:+-H $hostapd_ctrl}
 }
 
 mac80211_setup_supplicant_noctl() {
@@ -732,9 +749,11 @@ mac80211_setup_vif() {
 	json_get_vars mode
 	json_get_var vif_txpower txpower
 
+    echo "ip link set dev $ifname up" > /dev/console
 	ip link set dev "$ifname" up || {
 		wireless_setup_vif_failed IFUP_ERROR
 		json_select ..
+        echo "failed"
 		return
 	}
 
@@ -767,10 +786,16 @@ mac80211_setup_vif() {
 		;;
 		sta)
 			mac80211_setup_supplicant || failed=1
-		;;
+            echo "config wpa"
+            cp /opt/intel/config/wpa-$interface.conf /var/run/wpa-$interface.conf
+
+            echo "bring up wpa agent"
+            /opt/intel/bin/wpa_supplicant -B -P /var/run/wpa_supplicant-$interface.pid -D nl80211 -i $interface -c /var/run/wpa-$interface.conf -C /var/run/wpa_supplicant
+        ;;
 	esac
 
 	json_select ..
+    echo "wireless_add_vif $name $ifname"
 	[ -n "$failed" ] || wireless_add_vif "$name" "$ifname"
 }
 
@@ -800,35 +825,6 @@ drv_mac80211_cleanup() {
 	hostapd_common_cleanup
 }
 
-drv_mac80211_setup() {
-	json_select config
-	json_get_vars \
-		phy macaddr path \
-		country chanbw distance \
-		txpower antenna_gain \
-		rxantenna txantenna \
-		frag rts beacon_int:100 htmode
-	json_get_values basic_rate_list basic_rate
-	json_select ..
-
-	find_phy || {
-		echo "Could not find PHY for device '$1'"
-		wireless_set_retry 0
-		return 1
-	}
-
-    exec 1>/dev/console
-    
-    echo "generate hostapd config for $interface"
-    /opt/lantiq/wave/scripts/pantek_wifi.lua reconfig $interface
-
-    echo "start hostapd for $interface"
-    /tmp/hostapd_$interface -B /var/run/hostapd-$interface.conf
-
-    exec 1>/dev/null
-
-	wireless_set_up
-}
 
 drv_mac80211_setup1() {
 	json_select config
@@ -904,8 +900,51 @@ drv_mac80211_setup1() {
 		}
 	}
 
+    echo "call setup vif" > /dev/console
 	for_each_interface "ap sta adhoc mesh monitor" mac80211_setup_vif
 
+	wireless_set_up
+}
+
+drv_mac80211_setup() {
+	json_select config
+	json_get_vars \
+		phy macaddr path \
+		country chanbw distance \
+		txpower antenna_gain \
+		rxantenna txantenna \
+		frag rts beacon_int:100 htmode
+	json_get_values basic_rate_list basic_rate
+	json_select ..
+
+	find_phy || {
+		echo "Could not find PHY for device '$1'"
+		wireless_set_retry 0
+		return 1
+	}
+
+	exec 1>/dev/console
+
+    if [ $inteface != 'wlan1' ]; then
+    	echo "config dev:$interface"
+	    /opt/lantiq/wave/scripts/pantek_wifi.lua reconfig $interface
+	
+	    echo "call hostpad" 
+    	/tmp/hostapd_$interface -B /var/run/hostapd-$interface.conf	
+    else
+    	for_each_interface "sta adhoc mesh monitor" mac80211_prepare_vif
+
+        echo "call setup vif" > /dev/console
+	    for_each_interface "sta" mac80211_setup_vif
+   
+        #echo "config wpa"
+        #cp /opt/intel/config/wpa_supplicant-$interface.conf /var/run/wpa-$interface.conf
+
+        #echo "bring up wpa agent"
+        #/opt/intel/bin/wpa_supplicant -B -P /var/run/wpa_supplicant-$interface.pid -D nl80211 -i $interface -c /var/run/wpa-$interface.conf
+    fi
+
+	exec 1>/dev/null
 	wireless_set_up
 }
 
@@ -924,6 +963,18 @@ drv_mac80211_teardown() {
 	json_select data
 	json_get_vars phy
 	json_select ..
+    
+    exec 1>/dev/console
+
+    if [ $inteface != 'wlan1' ]; then
+    	echo "kill $interface hostapd"
+        killall hostapd_$inteface
+    else
+        echo "kill wpa supplicant"
+        killall wpa_supplicant   
+    fi
+
+	exec 1>/dev/null
 
 	mac80211_interface_cleanup "$phy"
 }
