@@ -529,9 +529,11 @@ mac80211_prepare_vif() {
 
 	json_select ..
 
+    echo $macaddr 99 $1 > /dev/console
+
 	[ -n "$macaddr" ] || {
 		macaddr="$(mac80211_generate_mac $phy)"
-		macidx="$(($macidx + 1))"
+        macidx="$(($macidx + 1))"
 	}
 
 	json_add_object data
@@ -569,7 +571,9 @@ mac80211_prepare_vif() {
 		sta)
 			local wdsflag=
 			staidx="$(($staidx + 1))"
-		    echo "prepare sta vif" > /dev/console
+		    echo "prepare sta vif" $1  > /dev/console
+            macaddr=$1
+
             [ "$wds" -gt 0 ] && wdsflag="4addr on"
 			mac80211_iw_interface_add "$phy" "$ifname" managed "$wdsflag" || return
 			[ "$powersave" -gt 0 ] && powersave="on" || powersave="off"
@@ -887,7 +891,8 @@ drv_mac80211_setup1() {
 	rm -f "$hostapd_conf_file"
 	[ -n "$has_ap" ] && mac80211_hostapd_setup_base "$phy"
 
-	for_each_interface "sta adhoc mesh monitor" mac80211_prepare_vif
+    echo dev mac=$macaddr > /dev/console
+    for_each_interface "sta adhoc mesh monitor" mac80211_prepare_vif $macaddr
 	for_each_interface "ap" mac80211_prepare_vif
 
 	[ -n "$hostapd_ctrl" ] && {
@@ -932,8 +937,9 @@ drv_mac80211_setup() {
 	    echo "call hostpad" 
     	/tmp/hostapd_$interface -B /var/run/hostapd-$interface.conf	
     else
-    	for_each_interface "sta adhoc mesh monitor" mac80211_prepare_vif
-
+    	echo dev mac=$macaddr > /dev/console
+        for_each_interface "sta adhoc mesh monitor" mac80211_prepare_vif $macaddr
+ 
         echo "call setup vif" > /dev/console
 	    for_each_interface "sta" mac80211_setup_vif
    
