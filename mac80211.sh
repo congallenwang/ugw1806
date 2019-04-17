@@ -546,7 +546,7 @@ mac80211_prepare_vif() {
 		adhoc)
 			mac80211_iw_interface_add "$phy" "$ifname" adhoc || return
 		;;
-		ap)
+		ap1)
 			# Hostapd will handle recreating the interface and
 			# subsequent virtual APs belonging to the same PHY
 			if [ -n "$hostapd_ctrl" ]; then
@@ -753,7 +753,7 @@ mac80211_setup_vif() {
 	json_get_vars mode
 	json_get_var vif_txpower txpower
 
-    echo "ip link set dev $ifname up" > /dev/console
+    echo "ip link set dev $1 $ifname up" > /dev/console
 	ip link set dev "$ifname" up || {
 		wireless_setup_vif_failed IFUP_ERROR
 		json_select ..
@@ -930,12 +930,17 @@ drv_mac80211_setup() {
 
 	exec 1>/dev/console
 
-    if [ $inteface != 'wlan1' ]; then
+    if [ $interface != 'wlan1' ]; then
     	echo "config dev:$interface"
 	    /opt/lantiq/wave/scripts/pantek_wifi.lua reconfig $interface
-	
+
+        for_each_interface "ap" mac80211_prepare_vif $macaddr
+
 	    echo "call hostpad" 
-    	/tmp/hostapd_$interface -B /var/run/hostapd-$interface.conf	
+    	/tmp/hostapd_$interface -B /var/run/hostapd-$interface.conf
+        
+        echo "call setup vif" > /dev/console
+    	for_each_interface "ap" mac80211_setup_vif
     else
     	echo dev mac=$macaddr > /dev/console
         for_each_interface "sta adhoc mesh monitor" mac80211_prepare_vif $macaddr
@@ -972,7 +977,7 @@ drv_mac80211_teardown() {
     
     exec 1>/dev/console
 
-    if [ $inteface != 'wlan1' ]; then
+    if [ $interface != 'wlan1' ]; then
     	echo "kill $interface hostapd"
         killall hostapd_$inteface
     else
