@@ -794,7 +794,8 @@ mac80211_setup_vif() {
             cp /opt/intel/config/wpa-$interface.conf /var/run/wpa-$interface.conf
 
             echo "bring up wpa agent"
-            /opt/intel/bin/wpa_supplicant -B -P /var/run/wpa_supplicant-$interface.pid -D nl80211 -i $interface -c /var/run/wpa-$interface.conf -C /var/run/wpa_supplicant
+            #/opt/intel/bin/wpa_supplicant -B -P /var/run/wpa_supplicant-$interface.pid -D nl80211 -i $interface -c /var/run/wpa-$interface.conf -C /var/run/wpa_supplicant
+            /opt/intel/bin/wpa_supplicant -B -P /var/run/wpa_supplicant-$interface.pid -D nl80211 -i $interface -c /var/run/wpa_supplicant-$interface.conf -C /var/run/wpa_supplicant
         ;;
 	esac
 
@@ -936,10 +937,10 @@ drv_mac80211_setup() {
 
         for_each_interface "ap" mac80211_prepare_vif $macaddr
 
-	    echo "call hostpad" 
+	    echo "call hostpad for $interface" 
     	/tmp/hostapd_$interface -B /var/run/hostapd-$interface.conf
         
-        echo "call setup vif" > /dev/console
+        echo "##call setup vif" > /dev/console
     	for_each_interface "ap" mac80211_setup_vif
     else
     	echo dev mac=$macaddr > /dev/console
@@ -979,7 +980,7 @@ drv_mac80211_teardown() {
 
     if [ $interface != 'wlan1' ]; then
     	echo "kill $interface hostapd"
-        killall hostapd_$inteface
+        killall hostapd_$interface
     else
         echo "kill wpa supplicant"
         killall wpa_supplicant   

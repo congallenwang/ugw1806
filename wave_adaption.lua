@@ -61,7 +61,7 @@ function vap_parameters(conf_file, opwrt_iface_dir, vap_name, dev_index, net_ind
 	write_str_config(conf_file, "bssid", opwrt_iface_dir['bssid'], bssid)
 	--###___SSID_parameters___###
 	conf_file:write(string.format("###___SSID_parameters___###\n"))
-	write_str_config(conf_file, "bridge", opwrt_iface_dir['network'], 'br-lan')--opwrt_iface_dir['network']))
+	--write_str_config(conf_file, "bridge", opwrt_iface_dir['network'], 'br-lan')--opwrt_iface_dir['network']))
 	write_str_config(conf_file, "ssid", opwrt_iface_dir['ssid'], 'PantekSDK-test') 
 	write_str_config(conf_file, "utf8_ssid", '1', '1') 
        
@@ -194,6 +194,7 @@ function wifi_reload(dev, dev_index)
 
 	-- 3. setting iwpriv configuration after hostapd
 	cls_iwpriv:iwpriv_after_hostapd(device_name, opwrt_device_dir)
+	
 	-- 4. setting vap iwpriv configuration after hostapd
 	--os.execute('sleep 2')
 	up_script:write_command_script('sleep 2')
@@ -209,10 +210,9 @@ end
 
 function hostapd_reconfig(dev, dev_index) 
 	local ret
-
+	local hostpad_path="/var/run"
+	
 	local device_name = dev:name()
-	--disable current wifi iface
-	disable_iface(dev)
 
 	local opwrt_device_dir = prase_wireless_uci(device_name)
 
@@ -222,7 +222,7 @@ function hostapd_reconfig(dev, dev_index)
 		return 0 -- wifi switch disable 
 	end
 
-	local hostapd_conf = string.format('%s/hostapd-%s.conf', '/var/run', device_name) 
+	local hostapd_conf = string.format('%s/hostapd-%s.conf', hostpad_path, device_name) 
 	--create hostapd configuration file
 	local conf_file = io.open(hostapd_conf, 'w+')
 
@@ -253,6 +253,8 @@ function hostapd_reconfig(dev, dev_index)
 			break
 		end
 	end
+	--end multi ssid setting
+	conf_file:close()
 
 end
 

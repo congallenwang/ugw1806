@@ -88,6 +88,7 @@ _wdev_handler() {
 	_wdev_prepare_channel
 	json_select ..
 
+    echo "call dev_$1_$2 $interface" > /dev/console
 	eval "drv_$1_$2 \"$interface\""
 }
 
@@ -328,7 +329,8 @@ init_wireless_driver() {
 			data="$1"; shift
 			export __netifd_device="$interface"
 
-            echo "dat=$data" > /dev/console
+            echo "wireless[$cmd] called" > /dev/console
+            echo "[data]=$data" > /dev/console
 			add_driver() {
 				[[ "$name" == "$1" ]] || return 0
 				_wdev_handler "$1" "$cmd"

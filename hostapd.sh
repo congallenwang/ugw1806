@@ -630,6 +630,8 @@ wpa_supplicant_prepare_interface() {
 	cat > "$_config" <<EOF
 $ap_scan
 $country_str
+wds=1
+vendor_elems=13 DD050017353001
 EOF
 	return 0
 }
