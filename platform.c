@@ -312,6 +312,59 @@ int getIfIndex(const char *interface_name)
 }
 
 
+#if 0
+// If we started capturing now, we would receive *all* packets. This means
+    // *all* packets (even those that have nothing to do with 1905) would be
+    // copied from kernel space into user space (which is a very costly
+    // operation).
+    //
+    // To mitigate this effect (which takes place when enabling 'monitor mode'
+    // on an interface), 'pcap' let's us define "filtering rules" that take
+    // place in kernel space, thus limiting the amount of copies that need to
+    // be done to user space.
+    //
+    // Here we are going to configure a filter that only lets certain types of
+    // packets to get through. In particular those that meet any of these
+    // requirements:
+    //
+    //   1. Have ethertype == ETHERTYPE_1905 *and* are addressed to either the
+    //      interface MAC address, the AL MAC address or the broadcast AL MAC
+    //      address
+    //
+    //   2. Have ethertype == ETHERTYPE_LLDP *and* are addressed to the special
+    //      LLDP nearest bridge multicast MAC address 
+    //      
+    snprintf(
+              pcap_filter_expression,
+              sizeof(pcap_filter_expression),
+              "not ether src %02x:%02x:%02x:%02x:%02x:%02x "
+              " and "
+              "not ether src %02x:%02x:%02x:%02x:%02x:%02x "
+              " and "
+              "((ether proto 0x%04x and (ether dst %02x:%02x:%02x:%02x:%02x:%02x or ether dst %02x:%02x:%02x:%02x:%02x:%02x or ether dst %02x:%02x:%02x:%02x:%02x:%02x))"
+              " or "
+              "(ether proto 0x%04x and ether dst %02x:%02x:%02x:%02x:%02x:%02x))",
+              aux->interface_mac_address[0], aux->interface_mac_address[1], aux->interface_mac_address[2], aux->interface_mac_address[3], aux->interface_mac_address[4], aux->interface_mac_address[5],
+              aux->al_mac_address[0],        aux->al_mac_address[1],        aux->al_mac_address[2],        aux->al_mac_address[3],        aux->al_mac_address[4],        aux->al_mac_address[5],
+              ETHERTYPE_1905,
+              aux->interface_mac_address[0], aux->interface_mac_address[1], aux->interface_mac_address[2], aux->interface_mac_address[3], aux->interface_mac_address[4], aux->interface_mac_address[5],
+              MCAST_1905_B0,                 MCAST_1905_B1,                 MCAST_1905_B2,                 MCAST_1905_B3,                 MCAST_1905_B4,                 MCAST_1905_B5,
+              aux->al_mac_address[0],        aux->al_mac_address[1],        aux->al_mac_address[2],        aux->al_mac_address[3],        aux->al_mac_address[4],        aux->al_mac_address[5],
+              ETHERTYPE_LLDP,
+              MCAST_LLDP_B0,                 MCAST_LLDP_B1,                 MCAST_LLDP_B2,                 MCAST_LLDP_B3,                 MCAST_LLDP_B4,                 MCAST_LLDP_B5
+            );
+
+struct sock_filter {	/* Filter block */
+	__u16	code;   /* Actual filter code */
+	__u8	jt;	/* Jump true */
+	__u8	jf;	/* Jump false */
+	__u32	k;      /* Generic multiuse field */
+};
+
+#endif
+
+
+#if 0
 struct sock_filter bpf_1905_code[] = {
     { 0x28, 0, 0, 0x0000000c },
     { 0x15, 0, 1, 0x0000893a },
@@ -325,8 +378,38 @@ struct sock_filter bpf_lldp_code[] = {
     { 0x6, 0, 0, 0x00040000 },
     { 0x6, 0, 0, 0x00000000 },
 };
+#else
+//ether proto 0x893a and (not ether src 56:1E:3F:D0:9B:5B(real mac) and not ether src 00:4f:21:03:ab:0c(AL mac))
+struct sock_filter bpf_1905_code[] = {
+	{ 0x28, 0, 0, 0x0000000c },
+	{ 0x15, 0, 8, 0x0000893a },
+	{ 0x20, 0, 0, 0x00000008 },
+	{ 0x15, 0, 2, 0x3fd09b5b },
+	{ 0x28, 0, 0, 0x00000006 },
+	{ 0x15, 4, 3, 0x0000561e },
+	{ 0x15, 0, 2, 0x2103ab0c },
+	{ 0x28, 0, 0, 0x00000006 },
+	{ 0x15, 1, 0, 0x0000004f },
+	{ 0x6, 0, 0, 0x00040000 },
+	{ 0x6, 0, 0, 0x00000000 },
+};
 
+//ether proto 0x88cc and (not ether src 56:1E:3F:D0:9B:5B(real mac) and not ether src 00:4f:21:03:ab:0c(AL mac))
+struct sock_filter bpf_lldp_code[] = {
+	{ 0x28, 0, 0, 0x0000000c },
+	{ 0x15, 0, 8, 0x000088cc },
+	{ 0x20, 0, 0, 0x00000008 },
+	{ 0x15, 0, 2, 0x3fd09b5b },
+	{ 0x28, 0, 0, 0x00000006 },
+	{ 0x15, 4, 3, 0x0000561e },
+	{ 0x15, 0, 2, 0x2103ab0c },
+	{ 0x28, 0, 0, 0x00000006 },
+	{ 0x15, 1, 0, 0x0000004f },
+	{ 0x6, 0, 0, 0x00040000 },
+	{ 0x6, 0, 0, 0x00000000 },
 
+};
+#endif
 
 int openPacketSocket(int ifindex, uint16_t eth_type)
 {
@@ -344,11 +427,16 @@ int openPacketSocket(int ifindex, uint16_t eth_type)
 
 
    //setup filter according to ethtype	
-    filter.len = sizeof(bpf_lldp_code)/sizeof(bpf_lldp_code[0]);
     if(eth_type == ETHERTYPE_LLDP)
+    {
 	filter.filter = bpf_lldp_code;
+	filter.len = sizeof(bpf_lldp_code)/sizeof(bpf_lldp_code[0]);
+    }
     else
+    {
+	filter.len = sizeof(bpf_1905_code)/sizeof(bpf_1905_code[0]);
 	filter.filter = bpf_1905_code;
+    }
 
     // attach the bpf filter
     if(setsockopt(s, SOL_SOCKET, SO_ATTACH_FILTER, &filter, sizeof(filter)) == -1) {
