@@ -411,6 +411,29 @@ struct sock_filter bpf_lldp_code[] = {
 };
 #endif
 
+void dumpbpf(struct sock_filter* p, int len)
+{
+	int i =0;
+
+
+	//len= sizeof(p)/sizeof(p[0]);
+
+	//printf("len=%d\n",len);
+	printf("**************\n");
+	for(i=0;i<len;i++)
+	{
+		printf("0x%02x,%d,%d,0x%08x\n",p[i].code,
+								  p[i].jt,
+								  p[i].jf,
+								  p[i].k);
+
+	}
+	printf("**************\n");
+
+	return;
+
+}
+
 int openPacketSocket(int ifindex, uint16_t eth_type)
 {
     int                 s;
@@ -431,11 +454,98 @@ int openPacketSocket(int ifindex, uint16_t eth_type)
     {
 	filter.filter = bpf_lldp_code;
 	filter.len = sizeof(bpf_lldp_code)/sizeof(bpf_lldp_code[0]);
+
+	
     }
     else
     {
 	filter.len = sizeof(bpf_1905_code)/sizeof(bpf_1905_code[0]);
 	filter.filter = bpf_1905_code;
+    }
+
+    // attach the bpf filter
+    if(setsockopt(s, SOL_SOCKET, SO_ATTACH_FILTER, &filter, sizeof(filter)) == -1) {
+	 perror("setsockopt");
+	 close(s);
+	 return -1;
+    }	
+
+
+    memset(&socket_address, 0, sizeof(socket_address));
+    socket_address.sll_family   = AF_PACKET;
+    socket_address.sll_ifindex  = ifindex;
+    socket_address.sll_protocol = ETH_P_ALL;
+
+    if (-1 == bind(s, (struct sockaddr*)&socket_address, sizeof(socket_address)))
+    {
+        close(s);
+        return -1;
+    }
+
+    return s;
+}
+
+
+
+int openPacketSocket1(int ifindex, uint16_t eth_type,unsigned char* if_mac, unsigned char* al_mac)
+{
+    int                 s;
+    struct sockaddr_ll  socket_address;
+    struct sock_fprog filter;
+    unsigned int* pk;
+    unsigned char* pm;
+
+
+    //s = socket(AF_PACKET, SOCK_RAW, htons(eth_type));
+    s = socket(AF_PACKET, SOCK_RAW, ETH_P_ALL);
+    if (-1 == s)
+    {
+        return -1;
+    }
+
+
+   //setup filter according to ethtype	
+    if(eth_type == ETHERTYPE_LLDP)
+    {
+	filter.filter = bpf_lldp_code;
+	filter.len = sizeof(bpf_lldp_code)/sizeof(bpf_lldp_code[0]);
+
+	//cp if mac
+	pk=&(bpf_lldp_code[3].k);
+	*pk=*((unsigned int*)&if_mac[2]);
+
+	pk=&(bpf_lldp_code[5].k);
+	*pk=*((unsigned short*)&if_mac[0]);
+
+	//cp al mac	
+	pk=&(bpf_lldp_code[6].k);
+	*pk=*((unsigned int*)&al_mac[2]);
+
+	pk=&(bpf_lldp_code[8].k);
+	*pk=*((unsigned short*)&al_mac[0]);
+
+	//dumpbpf(bpf_lldp_code,filter.len);
+    }
+    else
+    {
+	filter.len = sizeof(bpf_1905_code)/sizeof(bpf_1905_code[0]);
+	filter.filter = bpf_1905_code;
+
+	//cp if mac
+	pk=&(bpf_1905_code[3].k);
+	*pk=*((unsigned int*)&if_mac[2]);
+
+	pk=&(bpf_1905_code[5].k);
+	*pk=*((unsigned short*)&if_mac[0]);
+
+	//cp al mac	
+	pk=&(bpf_1905_code[6].k);
+	*pk=*((unsigned int*)&al_mac[2]);
+
+	pk=&(bpf_1905_code[8].k);
+	*pk=*((unsigned short*)&al_mac[0]);
+
+	//dumpbpf(bpf_1905_code,filter.len);
     }
 
     // attach the bpf filter
